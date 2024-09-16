@@ -3,6 +3,7 @@ using Five9.CodingAssessment.Models;
 using Five9.CodingAssessment.Extensions.Exceptions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Five9.CodingAssessment.Data.Repositories;
 
 namespace Five9.CodingAssessment.Controllers
 {
@@ -10,11 +11,10 @@ namespace Five9.CodingAssessment.Controllers
     [Route("api/[controller]")]
     public class CallCenterController : ControllerBase
     {
-        private readonly CallCenterContext _context;
-
-        public CallCenterController(CallCenterContext context)
+        private readonly IAgentRepository _agentRepository;
+        public CallCenterController(IAgentRepository agentRepository)
         {
-            _context = context;
+            _agentRepository = agentRepository;
         }
 
         [HttpPost]
@@ -24,10 +24,11 @@ namespace Five9.CodingAssessment.Controllers
 
             if (currentUtcTime.Subtract(callEvent.TimestampUtc).TotalHours > 1)
             {
-                return BadRequest(new LateEventException("Event is more than 1 hour old"));
+                return BadRequest(new LateEventException("Event is more than an hour old"));
             }
 
-            var agent = await _context.Agents.FirstOrDefaultAsync(a => a.AgentId == callEvent.AgentId) ?? new Agent { AgentId = callEvent.AgentId, AgentName = callEvent.AgentName};
+            var agent = await _agentRepository.GetAgentByIdAsync(callEvent.AgentId)
+                        ?? new Agent { AgentId = callEvent.AgentId, AgentName = callEvent.AgentName };
 
             switch (callEvent.Action)
             {
@@ -43,8 +44,7 @@ namespace Five9.CodingAssessment.Controllers
 
             agent.Queues = callEvent.QueueIds.Select(queueId => new Queue { QueueId = Guid.Parse(queueId) }).ToList();
 
-            _context.Agents.Update(agent);
-            await _context.SaveChangesAsync();
+            await _agentRepository.UpsertAgentAsync(agent);
 
             return Ok(agent);
         }
